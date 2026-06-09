@@ -82,11 +82,19 @@ public final class Main {
                 break;
 
             case "server":
-                System.out.println("Dedicated server mode.\nNot implemented.");
+                try {
+                    forge.view.server.HttpGameServer.start(args);
+                } catch (Exception e) {
+                    System.err.println("Server error: " + e.getMessage());
+                }
+                break;
+
+            case "export-dsl":
+                DslExporter.export(args);
                 break;
 
             default:
-                System.out.println("Unknown mode.\nKnown mode is 'sim', 'parse' ");
+                System.out.println("Unknown mode.\nKnown modes: 'sim', 'parse', 'export-dsl'");
                 break;
         }
 

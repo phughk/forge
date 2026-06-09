@@ -140,16 +140,21 @@ public class SimulateMatch {
 
         Match mc = new Match(rules, pp, "Test");
 
+        forge.ai.training.TrainingDataRecorder recorder = null;
+        if (params.containsKey("training-data")) {
+            recorder = new forge.ai.training.TrainingDataRecorder(params.get("training-data").get(0));
+        }
+
         if (matchSize != 0) {
             int iGame = 0;
             while (!mc.isMatchOver()) {
                 // play games until the match ends
-                simulateSingleMatch(mc, iGame, outputGamelog);
+                simulateSingleMatch(mc, iGame, outputGamelog, recorder);
                 iGame++;
             }
         } else {
             for (int iGame = 0; iGame < nGames; iGame++) {
-                simulateSingleMatch(mc, iGame, outputGamelog);
+                simulateSingleMatch(mc, iGame, outputGamelog, recorder);
             }
         }
 
@@ -172,10 +177,23 @@ public class SimulateMatch {
     }
 
     public static void simulateSingleMatch(final Match mc, int iGame, boolean outputGamelog) {
+        simulateSingleMatch(mc, iGame, outputGamelog, null);
+    }
+
+    public static void simulateSingleMatch(final Match mc, int iGame, boolean outputGamelog,
+                                            forge.ai.training.TrainingDataRecorder recorder) {
         final StopWatch sw = new StopWatch();
         sw.start();
 
         final Game g1 = mc.createGame();
+        if (recorder != null) {
+            recorder.beginGame(g1);
+            for (forge.game.player.Player p : g1.getPlayers()) {
+                if (p.getController() instanceof forge.ai.PlayerControllerAi) {
+                    ((forge.ai.PlayerControllerAi) p.getController()).setTrainingRecorder(recorder);
+                }
+            }
+        }
         // will run match in the same thread
         try {
             TimeLimitedCodeBlock.runWithTimeout(() -> {
@@ -191,6 +209,9 @@ public class SimulateMatch {
                 sw.stop();
             }
             g1.setGameOver(GameEndReason.Draw);
+        }
+        if (recorder != null) {
+            recorder.finalizeGame(g1);
         }
 
         List<GameLogEntry> log;
@@ -343,7 +364,7 @@ public class SimulateMatch {
         return null;
     }
 
-    private static Deck deckFromCommandLineParameter(String deckname, GameType type) {
+    static Deck deckFromCommandLineParameter(String deckname, GameType type) {
         int dotpos = deckname.lastIndexOf('.');
         if (dotpos > 0 && dotpos == deckname.length() - 4) {
             String baseDir = type.equals(GameType.Commander) ?

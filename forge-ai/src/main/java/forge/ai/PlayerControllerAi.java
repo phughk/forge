@@ -57,6 +57,11 @@ public class PlayerControllerAi extends PlayerController {
     private final AiController brains;
 
     private boolean pilotsNonAggroDeck = false;
+    private forge.ai.training.TrainingDataRecorder trainingRecorder = null;
+
+    public void setTrainingRecorder(forge.ai.training.TrainingDataRecorder recorder) {
+        this.trainingRecorder = recorder;
+    }
 
     public PlayerControllerAi(Game game, Player p, LobbyPlayer lp) {
         super(game, p, lp);
@@ -820,17 +825,63 @@ public class PlayerControllerAi extends PlayerController {
 
     @Override
     public void declareAttackers(Player attacker, Combat combat) {
-        brains.declareAttackers(attacker, combat);
+        if (trainingRecorder != null) {
+            forge.game.card.CardCollection eligible = computeEligibleAttackers(attacker);
+            brains.declareAttackers(attacker, combat);
+            trainingRecorder.onAttackersDeclared(brains.getGame(), attacker, combat, eligible);
+        } else {
+            brains.declareAttackers(attacker, combat);
+        }
     }
 
     @Override
     public void declareBlockers(Player defender, Combat combat) {
-        brains.declareBlockersFor(defender, combat);
+        if (trainingRecorder != null) {
+            forge.game.card.CardCollection eligible = computeEligibleBlockers(defender, combat);
+            brains.declareBlockersFor(defender, combat);
+            trainingRecorder.onBlockersDeclared(brains.getGame(), defender, combat, eligible);
+        } else {
+            brains.declareBlockersFor(defender, combat);
+        }
     }
 
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
+        if (trainingRecorder != null) {
+            List<SpellAbility> available = computeAvailableSpells();
+            List<SpellAbility> chosen = brains.chooseSpellAbilityToPlay();
+            trainingRecorder.onCastOrPass(brains.getGame(), player, available, chosen);
+            return chosen;
+        }
         return brains.chooseSpellAbilityToPlay();
+    }
+
+    protected List<SpellAbility> computeAvailableSpells() {
+        forge.game.card.CardCollection cards = new forge.game.card.CardCollection(player.getCardsIn(ZoneType.Hand));
+        cards.addAll(player.getCardsIn(ZoneType.Battlefield));
+        return ComputerUtilAbility.getSpellAbilities(cards, player).stream()
+                .filter(sa -> !sa.isManaAbility())
+                .collect(Collectors.toList());
+    }
+
+    protected forge.game.card.CardCollection computeEligibleAttackers(Player attacker) {
+        forge.game.card.CardCollection result = new forge.game.card.CardCollection();
+        for (forge.game.card.Card c : attacker.getCardsIn(ZoneType.Battlefield)) {
+            if (c.isCreature() && forge.game.combat.CombatUtil.canAttack(c)) result.add(c);
+        }
+        return result;
+    }
+
+    protected forge.game.card.CardCollection computeEligibleBlockers(Player defender, Combat combat) {
+        forge.game.card.CardCollection result = new forge.game.card.CardCollection();
+        for (forge.game.card.Card c : defender.getCardsIn(ZoneType.Battlefield)) {
+            if (c.isCreature()
+                    && forge.game.combat.CombatUtil.canBlock(c, combat)
+                    && forge.game.combat.CombatUtil.canBlockAtLeastOne(c, combat.getAttackers())) {
+                result.add(c);
+            }
+        }
+        return result;
     }
 
     @Override
